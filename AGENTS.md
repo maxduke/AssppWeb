@@ -107,7 +107,9 @@ The Wisp server validates target hosts via `hostname_whitelist` in `backend/src/
 - `buy.itunes.apple.com` — purchase endpoint
 - `init.itunes.apple.com` — bag endpoint
 - `/^p\d+-buy\.itunes\.apple\.com$/` — pod-based hosts
-- `downloaddispatch.itunes.apple.com` — redownload dispatch endpoint (failureType 5002 fallback)
+- `downloaddispatch.itunes.apple.com` — redownload/update dispatch recovery
+- `s.mzstatic.com`, `fpinit.itunes.apple.com` — public SAP certificate and setup exchange
+- `uclient-api.itunes.apple.com` — public account-storefront iOS version catalog
 - Port restricted to `443` only
 - Direct IP targets blocked (`allow_direct_ip = false`)
 - Loopback IP targets blocked (`allow_loopback_ips = false`)
@@ -137,6 +139,9 @@ The backend proxies the bag endpoint via `GET /api/bag?guid=<deviceId>` using No
 - Vite for build tooling
 - IndexedDB for credential storage (via `idb`)
 - `libcurl.js` (WASM) for browser-side TLS 1.3 via Mbed TLS — connects through Wisp protocol
+- Authentication requires SAP configuration from the bag and signs the exact UTF-8 body in a browser Worker (`apple/sap/`). Missing/invalid signing configuration fails before credentials are sent. Only known HTTPS authentication endpoints and redirects are accepted.
+- SAP preparation/signing is serialized across accounts. Worker crashes/timeouts release pending calls; the next attempt can prepare again.
+- Download/version callers share `apple/downloadProduct.ts`: volumeStore -> pinned redownload -> bag updateProduct for known empty/unavailable responses. Explicit versions stay pinned; all successful responses validate app, bundle, version, and HTTPS Apple CDN URL.
 - `appleRequest()` in `frontend/src/apple/request.ts` wraps `libcurl.fetch` for all Apple API calls and forces HTTP/1.1 (`_libcurl_http_version: 1.1`)
 - Bag endpoint (`frontend/src/apple/bag.ts`) uses backend proxy (`/api/bag`) and falls back to `https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate` when `authenticateAccount` is missing or bag fetch fails
 - Authentication (`frontend/src/apple/authenticate.ts`) resolves bag endpoint, then sets `guid` via URL query manipulation to avoid duplicate/malformed query parameters
@@ -145,6 +150,7 @@ The backend proxies the bag endpoint via `GET /api/bag?guid=<deviceId>` using No
 
 ### Frontend Shared Components (`components/common/`)
 
+- **SapStatus** — accessible browser signing preparation/error status for sign-in and re-authentication
 - **Alert** — `<Alert type="error|success|warning">` for status messages (replaces inline alert divs)
 - **Modal** — `<Modal open={bool} onClose={fn} title={string}>` for dialog overlays
 - **Spinner** — inline SVG loading spinner for buttons
@@ -206,6 +212,7 @@ The settings endpoint (`/api/settings`) must never reflect request headers (`x-f
 
 ### Apple Protocol Error Codes
 
+- `5002` from `buyProduct`: license already owned (success); in download APIs it only permits endpoint recovery
 - `2034` / `2042`: Token expired — re-authentication required
 - `customerMessage === 'Your password has changed.'`: Password token invalid
 - `action.url` ending in `termsPage`: Terms acceptance required (throw with URL)
@@ -247,6 +254,8 @@ E2E tests cover:
 Test credentials are stored in environment variables (`TEST_EMAIL`, `TEST_PASSWORD`, `TEST_DEVICE_ID`, `TEST_BUNDLE_ID`) and must never be committed to the repository.
 
 ## Deployment
+
+The SAP WASM engine can be rebuilt with `bash frontend/scripts/unicorn-wasm-patch/build.sh`. The source revision, patch digest, build toolchain, and licenses are documented in `frontend/src/apple/sap/vendor/README.md`. Docker bundles verified public SAP assets and uses Node.js 22. See `docs/upstream-pr-review-2026-10.md` for protocol source comparisons and verification limits.
 
 ```bash
 docker compose up --build -d   # Builds and runs on port 8080
@@ -395,7 +404,7 @@ Always pair light and dark variants consistently:
 
 When the same UI pattern appears in 3+ components, extract it to `components/common/`. Current shared components:
 
-- `Alert`, `Modal`, `Spinner`, `CountrySelect`, `AppIcon`, `Badge`, `ProgressBar`, `icons`
+- `Alert`, `Modal`, `Spinner`, `CountrySelect`, `AppIcon`, `Badge`, `ProgressBar`, `SapStatus`, `icons`
 
 When adding new common components, update this AGENTS.md file accordingly.
 

@@ -1,0 +1,12 @@
+Unicorn 2.1.4, including QEMU TCI and GLib compatibility code.
+See COPYING, COPYING.LGPL2, COPYING_GLIB and AUTHORS.TXT in this directory.
+
+Upstream source: https://github.com/unicorn-engine/unicorn/tree/8028ec436f2d9376525352dd38ed9ed6b9f6be10
+AssppWeb integration: https://github.com/maxduke/AssppWeb
+Patch and build: frontend/scripts/unicorn-wasm-patch/
+Browser driver: frontend/src/apple/sap/
+Rebuild: bash frontend/scripts/unicorn-wasm-patch/build.sh
+
+The patched WASM engine is derived from AssppWeb upstream PR #89:
+https://github.com/Lakr233/AssppWeb/pull/89
+Apple signing guest binaries are separate public downloads, not part of Unicorn.

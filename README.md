@@ -4,6 +4,10 @@ A web-based tool for acquiring and installing iOS apps outside the App Store. Au
 
 ![preview](./resources/preview.png)
 
+This fork includes reviewed adaptations of the pending Apple service compatibility
+fixes. See the [upstream PR review](docs/upstream-pr-review-2026-10.md) for decisions,
+protocol safeguards, validation and remaining real-account/device acceptance.
+
 ## Zero-Trust Architecture
 
 AssppWeb uses a zero-trust design where the server **never sees your Apple credentials**. All Apple API communication happens directly in your browser via WebAssembly (libcurl.js with Mbed TLS 1.3). The server only acts as a blind TCP relay (Wisp protocol) and handles IPA compilation from public CDN downloads.
@@ -16,9 +20,9 @@ AssppWeb uses a zero-trust design where the server **never sees your Apple crede
 
 ### Deploy to Cloudflare
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Lakr233/AssppWeb&apiTokenTmpl=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22write%22%7D%2C%7B%22key%22%3A%22containers%22%2C%22type%22%3A%22write%22%7D%2C%7B%22key%22%3A%22cloudchamber%22%2C%22type%22%3A%22write%22%7D%5D&apiTokenName=AssppWeb%20Deploy)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maxduke/AssppWeb&apiTokenTmpl=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22write%22%7D%2C%7B%22key%22%3A%22containers%22%2C%22type%22%3A%22write%22%7D%2C%7B%22key%22%3A%22cloudchamber%22%2C%22type%22%3A%22write%22%7D%5D&apiTokenName=AssppWeb%20Deploy)
 
-This uses Cloudflare Workers + Containers with the published image `ghcr.io/lakr233/assppweb:latest`.
+This uses Cloudflare Workers + Containers with the published image `ghcr.io/maxduke/assppweb:latest`.
 
 Requirements:
 
@@ -35,7 +39,7 @@ If your build log fails at `Deploy a container application` with `Unauthorized`,
 <details>
 <summary>Click to show Railway deployment instructions</summary>
 
-1. Go to [railway.com/new/image](https://railway.com/new/image) → enter `ghcr.io/lakr233/assppweb:latest`
+1. Go to [railway.com/new/image](https://railway.com/new/image) → enter `ghcr.io/maxduke/assppweb:latest`
 2. In service **Settings**, set **Healthcheck Path** to `/api/settings` and deploy
 3. Right-click the service → **Attach volume** → mount path: `/data`
 4. In **Variables**, set `DATA_DIR` = `/data` and deploy
@@ -59,7 +63,7 @@ If your build log fails at `Deploy a container application` with `Unauthorized`,
 **Setup Docker Compose**
 
 ```bash
-curl -O https://raw.githubusercontent.com/Lakr233/AssppWeb/main/compose.yml
+curl -O https://raw.githubusercontent.com/maxduke/AssppWeb/main/compose.yml
 docker compose up -d
 ```
 

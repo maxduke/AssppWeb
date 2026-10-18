@@ -113,7 +113,11 @@
       "verify": "確認",
       "cancel": "キャンセル",
       "authFailed": "認証に失敗しました",
-      "addSuccess": "アカウントが正常に追加されました。"
+      "addSuccess": "アカウントが正常に追加されました。",
+      "preparingAssets": "署名コンポーネントを準備中 {{percent}}%",
+      "preparingSigner": "署名器を初期化中…",
+      "signerFailed": "署名コンポーネントの準備に失敗しました：{{error}}",
+      "retrying": "Apple から応答がありません（HTTP {{status}}）。{{seconds}} 秒後に再試行します（{{attempt}}/{{attempts}} 回目）…"
     },
     "detail": {
       "title": "アカウントの詳細",
@@ -453,7 +457,10 @@
       "emptyBody": "認証失敗: サーバーが空のボディでHTTP {{status}}を返しました",
       "missingAccountInfo": "レスポンスに accountInfo がありません",
       "missingAddress": "レスポンスに address がありません",
-      "unknownReason": "不明な理由により認証に失敗しました"
+      "unknownReason": "不明な理由により認証に失敗しました",
+      "transientFailure": "認証に失敗しました：{{attempts}} 回試行しましたが Apple から応答がありません（HTTP {{statuses}}）。しばらくしてから再度お試しください。",
+      "retryLater": "認証に失敗しました：Apple から {{seconds}} 秒待つよう求められました。しばらくしてから再度お試しください。",
+      "missingSigningConfig": "Apple から有効な署名設定を取得できませんでした。後でもう一度お試しください。"
     }
   },
   "toast": {
@@ -462,6 +469,7 @@
       "downloadSuccess": "ダウンロード成功",
       "downloadFailed": "ダウンロード失敗",
       "licenseSuccess": "ライセンス取得成功",
+      "licenseOwned": "ライセンス取得済み",
       "licenseFailed": "ライセンス取得失敗",
       "installStarted": "インストール開始",
       "shareAcquired": "リンク取得成功",
