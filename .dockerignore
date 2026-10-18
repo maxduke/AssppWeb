@@ -11,4 +11,7 @@ icon.jpg
 .claude
 references
 compose*.yml
+frontend/scripts/unicorn-wasm-patch/unicorn-src
+frontend/scripts/unicorn-wasm-patch/build
+frontend/scripts/unicorn-wasm-patch/dist
 .DS_Store

@@ -113,7 +113,11 @@
       "verify": "Проверить",
       "cancel": "Отмена",
       "authFailed": "Ошибка аутентификации",
-      "addSuccess": "Аккаунт успешно добавлен."
+      "addSuccess": "Аккаунт успешно добавлен.",
+      "retrying": "Apple не ответил (HTTP {{status}}). Повтор через {{seconds}} с (попытка {{attempt}} из {{attempts}})…",
+      "preparingAssets": "Подготовка компонентов входа… {{percent}}%",
+      "preparingSigner": "Подготовка безопасного входа…",
+      "signerFailed": "Не удалось подготовить вход: {{error}}"
     },
     "detail": {
       "title": "Детали аккаунта",
@@ -453,7 +457,10 @@
       "emptyBody": "Ошибка аутентификации: сервер вернул HTTP {{status}} с пустым телом",
       "missingAccountInfo": "В ответе отсутствует accountInfo",
       "missingAddress": "В ответе отсутствует address",
-      "unknownReason": "Аутентификация не удалась по неизвестной причине"
+      "unknownReason": "Аутентификация не удалась по неизвестной причине",
+      "transientFailure": "Ошибка аутентификации: Apple не ответил (HTTP {{statuses}}), попыток: {{attempts}}. Повторите попытку позже.",
+      "retryLater": "Ошибка аутентификации: Apple просит подождать {{seconds}} с. Повторите попытку позже.",
+      "missingSigningConfig": "Apple не предоставила настройки подписи. Повторите попытку позже."
     }
   },
   "toast": {
@@ -462,6 +469,7 @@
       "downloadSuccess": "Успешная загрузка",
       "downloadFailed": "Ошибка загрузки",
       "licenseSuccess": "Лицензия получена",
+      "licenseOwned": "Лицензия уже есть",
       "licenseFailed": "Ошибка получения лицензии",
       "installStarted": "Начало установки",
       "shareAcquired": "Ссылка получена",

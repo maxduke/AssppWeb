@@ -113,7 +113,11 @@
       "verify": "Verify",
       "cancel": "Cancel",
       "authFailed": "Authentication failed",
-      "addSuccess": "Account added successfully."
+      "addSuccess": "Account added successfully.",
+      "preparingAssets": "Preparing signing components {{percent}}%",
+      "preparingSigner": "Initializing the request signer…",
+      "signerFailed": "Failed to prepare signing components: {{error}}",
+      "retrying": "Apple did not respond (HTTP {{status}}). Retrying in {{seconds}}s (attempt {{attempt}} of {{attempts}})…"
     },
     "detail": {
       "title": "Account Details",
@@ -453,7 +457,10 @@
       "emptyBody": "Authentication failed: server returned HTTP {{status}} with empty body",
       "missingAccountInfo": "Missing accountInfo in response",
       "missingAddress": "Missing address in response",
-      "unknownReason": "Authentication failed for an unknown reason"
+      "unknownReason": "Authentication failed for an unknown reason",
+      "transientFailure": "Authentication failed: Apple did not respond after {{attempts}} attempts (HTTP {{statuses}}). Please try again later.",
+      "retryLater": "Authentication failed: Apple asked to wait {{seconds}} seconds before trying again. Please try again later.",
+      "missingSigningConfig": "Apple did not provide a usable signing configuration. Please try again later."
     }
   },
   "toast": {
@@ -462,6 +469,7 @@
       "downloadSuccess": "Download Success",
       "downloadFailed": "Download Failed",
       "licenseSuccess": "License Acquired",
+      "licenseOwned": "License Already Owned",
       "licenseFailed": "License Failed",
       "installStarted": "Installation Started",
       "shareAcquired": "Link Acquired",

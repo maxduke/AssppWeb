@@ -113,7 +113,11 @@
       "verify": "驗證",
       "cancel": "取消",
       "authFailed": "認證失敗",
-      "addSuccess": "帳號新增成功。"
+      "addSuccess": "帳號新增成功。",
+      "preparingAssets": "正在準備簽署元件 {{percent}}%",
+      "preparingSigner": "正在初始化簽署器…",
+      "signerFailed": "簽署元件準備失敗：{{error}}",
+      "retrying": "Apple 暫未回應（HTTP {{status}}），{{seconds}} 秒後重試（第 {{attempt}}/{{attempts}} 次）…"
     },
     "detail": {
       "title": "帳號詳情",
@@ -453,7 +457,10 @@
       "emptyBody": "認證失敗：伺服器傳回 HTTP {{status}} 且回應主體為空",
       "missingAccountInfo": "回應中缺少 accountInfo",
       "missingAddress": "回應中缺少 address",
-      "unknownReason": "未知原因導致認證失敗"
+      "unknownReason": "未知原因導致認證失敗",
+      "transientFailure": "認證失敗：嘗試 {{attempts}} 次後 Apple 仍未回應（HTTP {{statuses}}），請稍後再試。",
+      "retryLater": "認證失敗：Apple 要求等待 {{seconds}} 秒後再試，請稍後再試。",
+      "missingSigningConfig": "Apple 未傳回可用的簽章設定，請稍後重試。"
     }
   },
   "toast": {
@@ -462,6 +469,7 @@
       "downloadSuccess": "下載成功",
       "downloadFailed": "下載失敗",
       "licenseSuccess": "獲取授權成功",
+      "licenseOwned": "已擁有授權",
       "licenseFailed": "獲取授權失敗",
       "installStarted": "開始安裝",
       "shareAcquired": "連結已獲取",
