@@ -460,6 +460,8 @@
       "unknownReason": "不明な理由により認証に失敗しました",
       "transientFailure": "認証に失敗しました：{{attempts}} 回試行しましたが Apple から応答がありません（HTTP {{statuses}}）。しばらくしてから再度お試しください。",
       "retryLater": "認証に失敗しました：Apple から {{seconds}} 秒待つよう求められました。しばらくしてから再度お試しください。",
+      "timeout": "サインインがタイムアウトしました。もう一度お試しください。",
+      "invalidVerificationCode": "確認コードが正しくありません。もう一度お試しください。",
       "missingSigningConfig": "Apple から有効な署名設定を取得できませんでした。後でもう一度お試しください。"
     }
   },

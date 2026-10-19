@@ -141,6 +141,8 @@ The backend proxies the bag endpoint via `GET /api/bag?guid=<deviceId>` using No
 - `libcurl.js` (WASM) for browser-side TLS 1.3 via Mbed TLS — connects through Wisp protocol
 - Authentication requires SAP configuration from the bag and signs the exact UTF-8 body in a browser Worker (`apple/sap/`). Missing/invalid signing configuration fails before credentials are sent. Only known HTTPS authentication endpoints and redirects are accepted.
 - SAP preparation/signing is serialized across accounts. Worker crashes/timeouts release pending calls; the next attempt can prepare again.
+- Authentication starts with credential attempt `1`; only Apple's `-5000` advances it to `2`. Transport retries and redirects preserve the serialized body and re-sign each send. Structured Apple errors take priority over retryable HTTP statuses.
+- Authentication and SAP work have a five-minute deadline, including queue wait and asset/network operations. Propagate the caller's AbortSignal; cancelled queued work must not close another account's active Worker. See `docs/authentication-reliability.md`.
 - Download/version callers share `apple/downloadProduct.ts`: volumeStore -> pinned redownload -> bag updateProduct for known empty/unavailable responses. Explicit versions stay pinned; all successful responses validate app, bundle, version, and HTTPS Apple CDN URL.
 - `appleRequest()` in `frontend/src/apple/request.ts` wraps `libcurl.fetch` for all Apple API calls and forces HTTP/1.1 (`_libcurl_http_version: 1.1`)
 - Bag endpoint (`frontend/src/apple/bag.ts`) uses backend proxy (`/api/bag`) and falls back to `https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate` when `authenticateAccount` is missing or bag fetch fails
@@ -165,6 +167,7 @@ The backend proxies the bag endpoint via `GET /api/bag?guid=<deviceId>` using No
 - `utils/error.ts` — `getErrorMessage(e, fallback)` for standardized catch-block error extraction
 - `utils/crypto.ts` — AES-GCM encrypt/decrypt for account export/import
 - `utils/account.ts` — `accountHash()`, `accountStoreCountry()`, `firstAccountCountry()`
+- `utils/abort.ts` — cancellable async operations, disposable deadlines and retry delays; cancelled operations must not publish late results
 
 ### Import Ordering Convention
 

@@ -1,9 +1,8 @@
 import { create } from 'zustand';
 
 // Readiness of the SAP signer, shared so any screen can show what it is
-// doing. Preparation means ~14 MB of assets (first run only) plus the
-// emulation setup; both are quick here (~1 s total), but the download makes
-// a progress line worth showing while it lasts.
+// doing. Preparation loads approximately 24 MB of assets (cached after first
+// use) and completes the emulation setup.
 
 export type SapStage = 'idle' | 'assets' | 'setup' | 'ready' | 'error';
 
@@ -20,6 +19,7 @@ interface SapStore {
   setSetup: () => void;
   setReady: () => void;
   setError: (message: string) => void;
+  reset: () => void;
 }
 
 export const useSapStore = create<SapStore>((set) => ({
@@ -34,4 +34,6 @@ export const useSapStore = create<SapStore>((set) => ({
   setSetup: () => set({ stage: 'setup', percent: null }),
   setReady: () => set({ stage: 'ready', percent: null, error: null }),
   setError: (message) => set({ stage: 'error', percent: null, error: message }),
+  reset: () =>
+    set({ stage: 'idle', percent: null, error: null, hardwareID: null }),
 }));

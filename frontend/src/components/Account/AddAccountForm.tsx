@@ -5,9 +5,11 @@ import PageContainer from '../Layout/PageContainer';
 import Spinner from '../common/Spinner';
 import SapStatus from '../common/SapStatus';
 import { useAccounts } from '../../hooks/useAccounts';
+import { useCancellableTask } from '../../hooks/useCancellableTask';
 import { useToastStore } from '../../store/toast';
 import { authenticate, AuthenticationError } from '../../apple/authenticate';
 import { getErrorMessage } from '../../utils/error';
+import { throwIfAborted } from '../../utils/abort';
 import { generateDeviceId } from '../../apple/config';
 import type { AuthRetry } from '../../apple/authenticate';
 
@@ -24,11 +26,13 @@ export default function AddAccountForm() {
   const [needsCode, setNeedsCode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [retry, setRetry] = useState<AuthRetry | null>(null);
+  const task = useCancellableTask();
   const inputClassName =
     'block min-h-11 w-full min-w-0 max-w-full rounded-xl border-0 bg-gray-100 px-3 py-2 text-base text-gray-900 focus:ring-2 focus:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-gray-800 dark:text-white';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const controller = task.start();
     setLoading(true);
 
     try {
@@ -41,12 +45,18 @@ export default function AddAccountForm() {
         needsCode && code ? code : undefined,
         undefined,
         cleanedDeviceId,
-        setRetry,
+        (value) => {
+          if (!controller.signal.aborted) setRetry(value);
+        },
+        controller.signal,
       );
+      throwIfAborted(controller.signal);
       await addAccount(account);
+      throwIfAborted(controller.signal);
       addToast(t('accounts.addForm.addSuccess'), 'success');
       navigate('/accounts');
     } catch (err) {
+      if (controller.signal.aborted) return;
       if (err instanceof AuthenticationError && err.codeRequired) {
         setNeedsCode(true);
         addToast(err.message, 'error');
@@ -57,8 +67,10 @@ export default function AddAccountForm() {
         );
       }
     } finally {
-      setRetry(null);
-      setLoading(false);
+      if (task.finish(controller)) {
+        setRetry(null);
+        setLoading(false);
+      }
     }
   }
 
@@ -177,8 +189,7 @@ export default function AddAccountForm() {
             </button>
             <button
               type="button"
-              onClick={() => navigate('/accounts')}
-              disabled={loading}
+              onClick={() => (loading ? task.cancel() : navigate('/accounts'))}
               className="min-h-11 rounded-full bg-gray-200 px-6 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-300 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
             >
               {t('accounts.addForm.cancel')}

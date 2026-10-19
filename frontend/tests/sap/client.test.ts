@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { authenticationTimeoutMs } from '../../src/apple/config';
+import type { SapAssetBundle } from '../../src/apple/sap/types';
 
 vi.mock('../../src/apple/sap/assets', () => ({
   loadSapAssets: vi.fn(async () => ({
@@ -54,6 +56,7 @@ class FakeWorker {
 
 beforeEach(() => {
   vi.resetModules();
+  vi.clearAllMocks();
   workers.length = 0;
   hold = null;
   vi.stubGlobal('Worker', FakeWorker);
@@ -74,6 +77,127 @@ async function until(predicate: () => boolean) {
 }
 
 describe('SAP worker lifecycle', () => {
+  it('bounds a stalled asset preparation and permits the next account to retry', async () => {
+    const { prepareSigner, signWithSap } = await import(
+      '../../src/apple/sap/client'
+    );
+    const { loadSapAssets: load } = await import('../../src/apple/sap/assets');
+    vi.useFakeTimers();
+    vi.mocked(load).mockImplementationOnce(() => new Promise(() => {}));
+    const pending = prepareSigner('account-a', endpoints);
+    const rejected = expect(pending).rejects.toMatchObject({
+      name: 'TimeoutError',
+    });
+    await vi.advanceTimersByTimeAsync(authenticationTimeoutMs);
+    await rejected;
+    expect(workers).toHaveLength(0);
+    await expect(
+      signWithSap('account-b', endpoints, new Uint8Array(1)),
+    ).resolves.toBe(btoa('account-b'));
+    expect(workers).toHaveLength(1);
+  });
+
+  it('cancels stalled assets without publishing a late preparation or progress update', async () => {
+    const { prepareSigner, signWithSap } = await import(
+      '../../src/apple/sap/client'
+    );
+    const { loadSapAssets: load } = await import('../../src/apple/sap/assets');
+    const { useSapStore } = await import('../../src/store/sap');
+    let complete!: (value: SapAssetBundle) => void;
+    vi.mocked(load).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const rejected = expect(
+      prepareSigner('account-a', endpoints, controller.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    await until(() => !!complete);
+    const oldProgress = vi.mocked(load).mock.calls[0][0];
+    controller.abort();
+    await rejected;
+    await expect(
+      signWithSap('account-b', endpoints, new Uint8Array(1)),
+    ).resolves.toBe(btoa('account-b'));
+    complete({
+      commerceKit: new Uint8Array(1),
+      commerceCore: new Uint8Array(1),
+      coreFP: new Uint8Array(1),
+      coreFPICXS: new Uint8Array(1),
+    });
+    oldProgress?.(1, 1);
+    await Promise.resolve();
+    expect(workers).toHaveLength(1);
+    expect(useSapStore.getState()).toMatchObject({
+      stage: 'ready',
+      hardwareID: 'account-b',
+    });
+  });
+
+  it('cancelling a queued account does not terminate the active signature', async () => {
+    const { signWithSap } = await import('../../src/apple/sap/client');
+    hold = 'sign';
+    const active = signWithSap('account-a', endpoints, new Uint8Array(1));
+    await until(() => !!workers[0]?.release);
+    const controller = new AbortController();
+    const cancelled = expect(
+      signWithSap('account-b', endpoints, new Uint8Array(1), controller.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    controller.abort();
+    await cancelled;
+    expect(workers[0].terminate).not.toHaveBeenCalled();
+    hold = null;
+    workers[0].release!();
+    expect(await active).toBe(btoa('account-a'));
+    await expect(
+      signWithSap('account-a', endpoints, new Uint8Array(1)),
+    ).resolves.toBe(btoa('account-a'));
+    expect(workers).toHaveLength(1);
+  });
+
+  it('terminates a cancelled active worker and prepares a fresh signer', async () => {
+    const { signWithSap } = await import('../../src/apple/sap/client');
+    const controller = new AbortController();
+    hold = 'sign';
+    const cancelled = expect(
+      signWithSap('account-a', endpoints, new Uint8Array(1), controller.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    await until(() => !!workers[0]?.release);
+    controller.abort();
+    await cancelled;
+    hold = null;
+    await expect(
+      signWithSap('account-b', endpoints, new Uint8Array(1)),
+    ).resolves.toBe(btoa('account-b'));
+    expect(workers[0].terminate).toHaveBeenCalledTimes(1);
+    expect(workers).toHaveLength(2);
+    workers[0].release!();
+    await expect(
+      signWithSap('account-b', endpoints, new Uint8Array(1)),
+    ).resolves.toBe(btoa('account-b'));
+    expect(workers).toHaveLength(2);
+  });
+
+  it('cancels a stalled WASM download before creating a worker', async () => {
+    const { prepareSigner, signWithSap } = await import(
+      '../../src/apple/sap/client'
+    );
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise(() => {}));
+    const controller = new AbortController();
+    const cancelled = expect(
+      prepareSigner('account-a', endpoints, controller.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    await until(() => vi.mocked(fetch).mock.calls.length === 1);
+    controller.abort();
+    await cancelled;
+    expect(workers).toHaveLength(0);
+    await expect(
+      signWithSap('account-b', endpoints, new Uint8Array(1)),
+    ).resolves.toBe(btoa('account-b'));
+  });
+
   it('shares a prepared worker for concurrent calls on one account', async () => {
     const { prepareSigner, signWithSap } = await import(
       '../../src/apple/sap/client'

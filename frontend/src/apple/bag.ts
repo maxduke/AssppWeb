@@ -1,5 +1,6 @@
 import { authHeaders } from '../api/client';
 import { parsePlist } from './plist';
+import { abortable, throwIfAborted } from '../utils/abort';
 import type { SapEndpoints } from './sap/types';
 
 export interface BagOutput {
@@ -66,20 +67,31 @@ export function authEndpoint(rawURL: string, base?: URL): URL {
 // Fetches the bag via the backend proxy.
 // The backend fetches it using Node.js native HTTPS.
 // The bag response is public data (Apple service URLs, no credentials).
-export async function fetchBag(deviceId: string): Promise<BagOutput> {
+export async function fetchBag(
+  deviceId: string,
+  signal?: AbortSignal,
+): Promise<BagOutput> {
   try {
-    const resp = await fetch(`/api/bag?guid=${encodeURIComponent(deviceId)}`, {
-      headers: authHeaders(),
-    });
+    const resp = await abortable(
+      () =>
+        fetch(`/api/bag?guid=${encodeURIComponent(deviceId)}`, {
+          headers: authHeaders(),
+          signal,
+        }),
+      signal,
+    );
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ error: resp.statusText }));
+      const err = await abortable(() => resp.json(), signal).catch((error) => {
+        throwIfAborted(signal);
+        return { error: resp.statusText };
+      });
       console.warn(
         `[Bag] Proxy request failed, using default auth endpoint: ${err.error || `HTTP ${resp.status}`}`,
       );
       return { authURL: defaultAuthURL };
     }
 
-    const xml = await resp.text();
+    const xml = await abortable(() => resp.text(), signal);
     const dict = parsePlist(xml) as Record<string, any>;
 
     // authenticateAccount used to live inside the urlBag dict; newer bag
@@ -123,6 +135,7 @@ export async function fetchBag(deviceId: string): Promise<BagOutput> {
       ...downloadURLs,
     };
   } catch (error) {
+    throwIfAborted(signal);
     console.warn(
       `[Bag] Failed to fetch/parse bag, using default auth endpoint: ${
         error instanceof Error ? error.message : String(error)

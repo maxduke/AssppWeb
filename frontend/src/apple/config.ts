@@ -1,3 +1,6 @@
+// Includes bag lookup, queued SAP preparation, downloads, signing and retries.
+export const authenticationTimeoutMs = 5 * 60 * 1000;
+
 export const userAgent =
   "Configurator/2.17 (Macintosh; OS X 15.2; 24C5089c) AppleWebKit/0620.1.16.11.6";
 
