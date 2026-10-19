@@ -4,6 +4,7 @@
 // caches them in the Cache API keyed by their pinned SHA-256 digests.
 
 import { authHeaders } from '../../api/client';
+import { abortable, throwIfAborted } from '../../utils/abort';
 import type { SapAssetBundle } from './types';
 
 export interface SapAssetSpec {
@@ -48,31 +49,44 @@ async function fetchWithProgress(
   url: string,
   maximumBytes: number,
   onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
-  const response = await fetch(url, { headers: authHeaders() });
+  const response = await abortable(
+    () => fetch(url, { headers: authHeaders(), signal }),
+    signal,
+  );
   if (!response.ok) {
     throw new Error(`SAP asset download failed: HTTP ${response.status}`);
   }
   const total = Number(response.headers.get('content-length') ?? 0);
   if (!response.body) {
-    const buffer = await response.arrayBuffer();
+    const buffer = await abortable(() => response.arrayBuffer(), signal);
     return new Uint8Array(buffer);
   }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let loaded = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
+  let complete = false;
+  try {
+    for (;;) {
+      const { done, value } = await abortable(() => reader.read(), signal);
+      if (done) {
+        complete = true;
+        break;
+      }
+      chunks.push(value);
+      loaded += value.length;
+      if (loaded > maximumBytes) {
+        throw new Error('SAP asset exceeds expected size');
+      }
+      onProgress?.(loaded, total);
     }
-    chunks.push(value);
-    loaded += value.length;
-    if (loaded > maximumBytes) {
-      await reader.cancel();
-      throw new Error('SAP asset exceeds expected size');
+  } finally {
+    if (!complete) {
+      // Do not let a stalled stream's cancellation block queue cleanup.
+      void reader.cancel().catch(() => undefined);
     }
-    onProgress?.(loaded, total);
+    reader.releaseLock();
   }
   const assembled = new Uint8Array(loaded);
   let offset = 0;
@@ -86,12 +100,13 @@ async function fetchWithProgress(
 async function digestMatches(
   data: Uint8Array,
   expected: string,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   const view = new Uint8Array(data.length);
   view.set(data);
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    view.buffer as ArrayBuffer,
+  const digest = await abortable(
+    () => crypto.subtle.digest('SHA-256', view.buffer as ArrayBuffer),
+    signal,
   );
   const actual = Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, '0'))
@@ -102,64 +117,80 @@ async function digestMatches(
 /**
  * Loads all four SAP assets, verifying digests. Served bytes come from the
  * backend cache (public Apple data); the browser persists them in the Cache
- * API so the ~38 MiB transfer happens once.
+ * API so the approximately 24 MB transfer happens once.
  */
 export async function loadSapAssets(
   onProgress?: (loadedBytes: number, totalBytes: number) => void,
+  signal?: AbortSignal,
 ): Promise<SapAssetBundle> {
   const totalBytes = SAP_ASSET_SPECS.reduce((sum, spec) => sum + spec.size, 0);
   let loadedBytes = 0;
   let cache: Cache | null = null;
   try {
-    cache = await caches.open(CACHE_NAME);
+    cache = await abortable(() => caches.open(CACHE_NAME), signal);
   } catch {
+    throwIfAborted(signal);
     // Cache API unavailable (private mode); fall back to direct downloads.
   }
 
   const bundle: Record<string, Uint8Array> = {};
   for (const spec of SAP_ASSET_SPECS) {
+    throwIfAborted(signal);
     let data: Uint8Array | null = null;
 
     const url = `/api/sap-assets/${spec.name}?v=${spec.sha256}`;
     try {
-      const cached = await cache?.match(url);
+      const cached = cache
+        ? await abortable(() => cache!.match(url), signal)
+        : undefined;
       if (cached) {
-        const buffer = await cached.arrayBuffer();
+        const buffer = await abortable(() => cached.arrayBuffer(), signal);
         const cachedBytes = new Uint8Array(buffer);
         if (
           cachedBytes.length === spec.size &&
-          (await digestMatches(cachedBytes, spec.sha256))
+          (await digestMatches(cachedBytes, spec.sha256, signal))
         ) {
           data = new Uint8Array(cachedBytes);
         }
       }
     } catch {
+      throwIfAborted(signal);
       // Browser storage is optional, including reads in private mode.
     }
 
     if (!data) {
-      data = await fetchWithProgress(url, spec.size, (loaded) =>
-        onProgress?.(loadedBytes + loaded, totalBytes),
+      data = await fetchWithProgress(
+        url,
+        spec.size,
+        (loaded) => onProgress?.(loadedBytes + loaded, totalBytes),
+        signal,
       );
       if (
         data.length !== spec.size ||
-        !(await digestMatches(data, spec.sha256))
+        !(await digestMatches(data, spec.sha256, signal))
       ) {
         throw new Error(`SAP asset ${spec.name} failed integrity verification`);
       }
       try {
         const copy = new Uint8Array(data);
-        await cache?.put(
-          url,
-          new Response(copy.buffer as ArrayBuffer, {
-            headers: { 'Content-Type': 'application/octet-stream' },
-          }),
-        );
+        if (cache)
+          await abortable(
+            () =>
+              cache!.put(
+                url,
+                new Response(copy.buffer as ArrayBuffer, {
+                  headers: { 'Content-Type': 'application/octet-stream' },
+                }),
+              ),
+            signal,
+          );
       } catch {
+        throwIfAborted(signal);
         // Quota exhaustion must not discard a verified, usable asset.
       }
     }
 
+    throwIfAborted(signal);
     loadedBytes += spec.size;
     onProgress?.(loadedBytes, totalBytes);
     bundle[spec.name] = data;

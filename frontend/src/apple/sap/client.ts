@@ -7,11 +7,19 @@
 // account; concurrent callers share the same preparation. The zustand store
 // in store/sap.ts carries progress for the UI.
 
+import { useSapStore } from '../../store/sap';
 import { SapSigner } from './signer';
 import { validateSapSignerOptions } from './types';
 import { exchangeSetupBuffer, fetchSetupCertificate } from './protocol';
 import { loadSapAssets } from './assets';
-import { useSapStore } from '../../store/sap';
+import {
+  abortable,
+  createDeadline,
+  isAbortError,
+  throwIfAborted,
+} from '../../utils/abort';
+import { authenticationTimeoutMs } from '../config';
+import i18n from '../../i18n';
 import type { SapMachineDriver } from './signer';
 import type { SapEndpoints } from './types';
 
@@ -70,6 +78,7 @@ class WorkerMachineDriver implements SapMachineDriver {
   }
 
   private abort(error: Error): void {
+    if (this.closed) return;
     this.closed = true;
     this.worker.terminate();
     for (const entry of this.pending.values()) {
@@ -178,23 +187,39 @@ let operation: Promise<unknown> = Promise.resolve();
 
 // A signer is bound to one account. Hold the queue through signing too, so a
 // concurrent warmup/login cannot close its worker while it is in use.
-function exclusive<T>(run: () => Promise<T>): Promise<T> {
-  const result = operation.then(run);
+function exclusive<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  parent?: AbortSignal,
+): Promise<T> {
+  const deadline = createDeadline(
+    authenticationTimeoutMs,
+    parent,
+    i18n.t('errors.auth.timeout'),
+  );
+  const result = operation.then(() => {
+    // A queued cancellation must never cancel another account's active work.
+    throwIfAborted(deadline.signal);
+    return run(deadline.signal);
+  });
   operation = result.catch(() => undefined);
-  return result;
+  return abortable(() => result, deadline.signal).finally(() =>
+    deadline.dispose(),
+  );
 }
 let wasmBinary: ArrayBuffer | null = null;
 
-async function loadWorkerWasmBinary(): Promise<ArrayBuffer> {
+async function loadWorkerWasmBinary(signal: AbortSignal): Promise<ArrayBuffer> {
   if (wasmBinary) {
     return wasmBinary;
   }
   const url = new URL('./vendor/unicorn.wasm', import.meta.url);
-  const response = await fetch(url);
+  const response = await abortable(() => fetch(url, { signal }), signal);
   if (!response.ok) {
     throw new Error(`SAP engine download failed: HTTP ${response.status}`);
   }
-  wasmBinary = await response.arrayBuffer();
+  const binary = await abortable(() => response.arrayBuffer(), signal);
+  throwIfAborted(signal);
+  wasmBinary = binary;
   return wasmBinary;
 }
 
@@ -206,16 +231,19 @@ async function loadWorkerWasmBinary(): Promise<ArrayBuffer> {
 export function prepareSigner(
   hardwareID: string,
   endpoints: SapEndpoints,
+  signal?: AbortSignal,
 ): Promise<void> {
-  return exclusive(async () => {
-    await getSigner(hardwareID, endpoints);
-  });
+  return exclusive(async (activeSignal) => {
+    await getSigner(hardwareID, endpoints, activeSignal);
+  }, signal);
 }
 
 async function getSigner(
   hardwareID: string,
   endpoints: SapEndpoints,
+  signal: AbortSignal,
 ): Promise<PreparedSigner> {
+  throwIfAborted(signal);
   if (
     prepared &&
     prepared.driver.active &&
@@ -224,12 +252,13 @@ async function getSigner(
   ) {
     return prepared;
   }
-  return runPreparation(hardwareID, endpoints);
+  return runPreparation(hardwareID, endpoints, signal);
 }
 
 async function runPreparation(
   hardwareID: string,
   endpoints: SapEndpoints,
+  signal: AbortSignal,
 ): Promise<PreparedSigner> {
   useSapStore.getState().begin(hardwareID);
 
@@ -238,38 +267,54 @@ async function runPreparation(
   let driver: WorkerMachineDriver | null = null;
   try {
     // Tear down the old signer first: the worker holds ~160 MB of wasm heap.
-    await previous?.signer.close().catch(() => undefined);
+    if (previous)
+      await abortable(
+        () => previous.signer.close().catch(() => undefined),
+        signal,
+      );
     validateSapSignerOptions({
       ...endpoints,
       hardwareID: new TextEncoder().encode(hardwareID),
     });
 
-    const assets = await loadSapAssets((loaded, total) =>
-      useSapStore
-        .getState()
-        .setAssets(total ? Math.round((loaded / total) * 100) : 0),
+    const assets = await abortable(
+      () =>
+        loadSapAssets((loaded, total) => {
+          if (!signal.aborted)
+            useSapStore
+              .getState()
+              .setAssets(total ? Math.round((loaded / total) * 100) : 0);
+        }, signal),
+      signal,
     );
     useSapStore.getState().setSetup();
 
+    const wasm = await loadWorkerWasmBinary(signal);
+    throwIfAborted(signal);
     const worker = new Worker(new URL('./worker.ts', import.meta.url), {
       type: 'module',
     });
     driver = new WorkerMachineDriver(worker);
-    const wasm = await loadWorkerWasmBinary();
-    await driver.open(assets, wasm);
+    const activeDriver = driver;
+    await abortable(() => activeDriver.open(assets, wasm), signal);
 
-    const signer = await SapSigner.create(
-      {
-        ...endpoints,
-        hardwareID: new TextEncoder().encode(hardwareID),
-        assets,
-      },
-      driver,
-      {
-        fetchCertificate: () => fetchSetupCertificate(endpoints),
-        exchange: (input) => exchangeSetupBuffer(endpoints, input),
-      },
+    const signer = await abortable(
+      () =>
+        SapSigner.create(
+          {
+            ...endpoints,
+            hardwareID: new TextEncoder().encode(hardwareID),
+            assets,
+          },
+          activeDriver,
+          {
+            fetchCertificate: () => fetchSetupCertificate(endpoints, signal),
+            exchange: (input) => exchangeSetupBuffer(endpoints, input, signal),
+          },
+        ),
+      signal,
     );
+    throwIfAborted(signal);
 
     const result = { signer, driver, hardwareID, endpoints: { ...endpoints } };
     prepared = result;
@@ -277,9 +322,8 @@ async function runPreparation(
     return result;
   } catch (error) {
     await driver?.close();
-    useSapStore
-      .getState()
-      .setError(error instanceof Error ? error.message : String(error));
+    await previous?.driver.close();
+    reportFailure(error);
     throw error;
   }
 }
@@ -289,20 +333,27 @@ export async function signWithSap(
   hardwareID: string,
   endpoints: SapEndpoints,
   body: Uint8Array,
+  signal?: AbortSignal,
 ): Promise<string> {
-  return exclusive(async () => {
-    const current = await getSigner(hardwareID, endpoints);
+  return exclusive(async (activeSignal) => {
+    const current = await getSigner(hardwareID, endpoints, activeSignal);
     try {
-      return await current.signer.sign(body);
+      return await abortable(() => current.signer.sign(body), activeSignal);
     } catch (error) {
       prepared = null;
       await current.driver.close();
-      useSapStore
-        .getState()
-        .setError(error instanceof Error ? error.message : String(error));
+      reportFailure(error);
       throw error;
     }
-  });
+  }, signal);
+}
+
+function reportFailure(error: unknown): void {
+  if (isAbortError(error)) useSapStore.getState().reset();
+  else
+    useSapStore
+      .getState()
+      .setError(error instanceof Error ? error.message : String(error));
 }
 
 function endpointsEqual(left: SapEndpoints, right: SapEndpoints): boolean {

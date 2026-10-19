@@ -225,6 +225,7 @@ it('signs exactly the UTF-8 bytes sent, retaining the body and cookies across re
       'aabbccddeeff',
       sapEndpoints,
       new TextEncoder().encode(request.body),
+      expect.any(AbortSignal),
     );
   }
 });

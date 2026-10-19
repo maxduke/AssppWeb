@@ -460,6 +460,8 @@
       "unknownReason": "未知原因導致認證失敗",
       "transientFailure": "認證失敗：嘗試 {{attempts}} 次後 Apple 仍未回應（HTTP {{statuses}}），請稍後再試。",
       "retryLater": "認證失敗：Apple 要求等待 {{seconds}} 秒後再試，請稍後再試。",
+      "timeout": "登入逾時，請重試。",
+      "invalidVerificationCode": "驗證碼不正確，請重試。",
       "missingSigningConfig": "Apple 未傳回可用的簽章設定，請稍後重試。"
     }
   },

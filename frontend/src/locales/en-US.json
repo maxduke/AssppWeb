@@ -460,6 +460,8 @@
       "unknownReason": "Authentication failed for an unknown reason",
       "transientFailure": "Authentication failed: Apple did not respond after {{attempts}} attempts (HTTP {{statuses}}). Please try again later.",
       "retryLater": "Authentication failed: Apple asked to wait {{seconds}} seconds before trying again. Please try again later.",
+      "timeout": "Sign-in timed out. Please try again.",
+      "invalidVerificationCode": "The verification code is incorrect. Please try again.",
       "missingSigningConfig": "Apple did not provide a usable signing configuration. Please try again later."
     }
   },

@@ -460,6 +460,8 @@
       "unknownReason": "알 수 없는 이유로 인증에 실패했습니다",
       "transientFailure": "인증 실패: {{attempts}}번 시도했지만 Apple이 응답하지 않았습니다(HTTP {{statuses}}). 잠시 후 다시 시도해 주세요.",
       "retryLater": "인증 실패: Apple이 {{seconds}}초 후에 다시 시도하라고 요청했습니다. 잠시 후 다시 시도해 주세요.",
+      "timeout": "로그인 시간이 초과되었습니다. 다시 시도해 주세요.",
+      "invalidVerificationCode": "인증 코드가 올바르지 않습니다. 다시 시도해 주세요.",
       "missingSigningConfig": "Apple에서 유효한 서명 설정을 받지 못했습니다. 나중에 다시 시도하세요."
     }
   },

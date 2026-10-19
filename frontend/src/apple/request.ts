@@ -1,5 +1,6 @@
 import { libcurl, initLibcurl } from './libcurl-init';
 import { buildCookieHeader } from './cookies';
+import { abortable } from '../utils/abort';
 import { userAgent } from './config';
 import type { Cookie } from '../types';
 
@@ -24,7 +25,7 @@ export interface AppleResponse {
 export async function appleRequest(
   opts: AppleRequestOptions,
 ): Promise<AppleResponse> {
-  await initLibcurl();
+  await abortable(() => initLibcurl(), opts.signal);
 
   const url = `https://${opts.host}${opts.path}`;
   const headers: Record<string, string> = {
@@ -39,21 +40,25 @@ export async function appleRequest(
     }
   }
 
-  const resp = await libcurl.fetch(url, {
-    method: opts.method,
-    headers,
-    body: opts.body,
-    signal: opts.signal,
-    redirect: 'manual',
-    _libcurl_http_version: 1.1,
-  });
+  const resp = await abortable(
+    () =>
+      libcurl.fetch(url, {
+        method: opts.method,
+        headers,
+        body: opts.body,
+        signal: opts.signal,
+        redirect: 'manual',
+        _libcurl_http_version: 1.1,
+      }),
+    opts.signal,
+  );
 
   const responseHeaders: Record<string, string> = {};
   for (const [key, value] of resp.raw_headers) {
     responseHeaders[key.toLowerCase()] = value;
   }
 
-  const body = await resp.text();
+  const body = await abortable(() => resp.text(), opts.signal);
 
   return {
     status: resp.status,

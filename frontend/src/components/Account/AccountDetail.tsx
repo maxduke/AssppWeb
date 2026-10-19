@@ -5,9 +5,11 @@ import PageContainer from '../Layout/PageContainer';
 import Spinner from '../common/Spinner';
 import SapStatus from '../common/SapStatus';
 import { useAccounts } from '../../hooks/useAccounts';
+import { useCancellableTask } from '../../hooks/useCancellableTask';
 import { useToastStore } from '../../store/toast';
 import { authenticate, AuthenticationError } from '../../apple/authenticate';
 import { getErrorMessage } from '../../utils/error';
+import { throwIfAborted } from '../../utils/abort';
 import { storeIdToCountry } from '../../apple/config';
 import type { AuthRetry } from '../../apple/authenticate';
 
@@ -29,6 +31,7 @@ export default function AccountDetail() {
   const [reauthRetry, setReauthRetry] = useState<AuthRetry | null>(null);
   const [reauthCode, setReauthCode] = useState('');
   const [needsCode, setNeedsCode] = useState(false);
+  const task = useCancellableTask(email);
 
   useEffect(() => {
     loadAccounts();
@@ -63,6 +66,7 @@ export default function AccountDetail() {
 
   async function handleReauth() {
     if (!account) return;
+    const controller = task.start();
     setReauthing(true);
 
     try {
@@ -72,13 +76,19 @@ export default function AccountDetail() {
         needsCode && reauthCode ? reauthCode : undefined,
         account.cookies,
         account.deviceIdentifier,
-        setReauthRetry,
+        (value) => {
+          if (!controller.signal.aborted) setReauthRetry(value);
+        },
+        controller.signal,
       );
+      throwIfAborted(controller.signal);
       await updateAccount(updated);
+      throwIfAborted(controller.signal);
       setNeedsCode(false);
       setReauthCode('');
       addToast(t('accounts.detail.reauthSuccess'), 'success');
     } catch (err) {
+      if (controller.signal.aborted) return;
       if (err instanceof AuthenticationError && err.codeRequired) {
         setNeedsCode(true);
         addToast(err.message, 'error');
@@ -89,8 +99,10 @@ export default function AccountDetail() {
         );
       }
     } finally {
-      setReauthRetry(null);
-      setReauthing(false);
+      if (task.finish(controller)) {
+        setReauthRetry(null);
+        setReauthing(false);
+      }
     }
   }
 
@@ -197,10 +209,20 @@ export default function AccountDetail() {
             {t('accounts.detail.reauth')}
           </button>
 
+          {reauthing && (
+            <button
+              onClick={() => task.cancel()}
+              className="min-h-11 rounded-full bg-gray-200 px-5 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              {t('accounts.detail.cancel')}
+            </button>
+          )}
+
           {!showDelete ? (
             <button
               onClick={() => setShowDelete(true)}
-              className="min-h-11 rounded-full bg-red-50 px-5 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-950/70"
+              disabled={reauthing}
+              className="min-h-11 rounded-full bg-red-50 px-5 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-950/70"
             >
               {t('accounts.detail.delete')}
             </button>
@@ -211,7 +233,8 @@ export default function AccountDetail() {
               </span>
               <button
                 onClick={handleDelete}
-                className="min-h-11 rounded-full bg-red-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+                disabled={reauthing}
+                className="min-h-11 rounded-full bg-red-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t('accounts.detail.confirmDelete')}
               </button>
